@@ -8,14 +8,12 @@ import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.util.EntityUtils;
@@ -199,18 +197,13 @@ public class TestRedis {
 //		Date d = new Date(l*1000);
 //		String s = sdf.format(d);
 //		System.out.println(s);
+//		String s1 = "\"11\"218.20.118.133";
+//		String regex = "\"(.*?)\"(\\d+\\.\\d+\\.\\d+\\.\\d+)";
+//		Pattern p = Pattern.compile(regex);
+//		boolean b = Pattern.matches(regex,s1);
+//		System.out.println(b);
 		
-		List<String> l1 = new ArrayList<String>();
-		l1.add("2");
-		l1.add("1");
-		l1.add("3");
-		List<String> l2 = new ArrayList<String>();
-		l2.add("a");
-		l2.add("b");
-		List<List<String>> l3 = new ArrayList<List<String>>();
-		l3.add(l1);
-		l3.add(l2);
-		System.out.println(l3.toString());
+		System.out.println((new Date()).getTime() / 1000);
 	}
 	
 	public static String getUserInfoByIdCard(String idcard,String username){

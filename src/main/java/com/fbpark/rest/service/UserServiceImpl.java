@@ -18,12 +18,10 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.Set;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
@@ -32,7 +30,6 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 
 import org.apache.commons.logging.Log;
@@ -72,6 +69,7 @@ import com.fbpark.rest.dao.SettingDao;
 import com.fbpark.rest.dao.SlideDao;
 import com.fbpark.rest.dao.TicketDao;
 import com.fbpark.rest.dao.UserDao;
+import com.fbpark.rest.dao.UserPoiDao;
 import com.fbpark.rest.model.Cart;
 import com.fbpark.rest.model.Classify;
 import com.fbpark.rest.model.Collect;
@@ -92,6 +90,7 @@ import com.fbpark.rest.model.Setting;
 import com.fbpark.rest.model.Slide;
 import com.fbpark.rest.model.Ticket;
 import com.fbpark.rest.model.User;
+import com.fbpark.rest.model.UserPoi;
 import com.fbpark.rest.redis.MyRedisDao;
 import com.fbpark.rest.service.model.GetuiModel;
 import com.fbpark.rest.service.model.PasswordModel;
@@ -163,6 +162,9 @@ public class UserServiceImpl implements UserService {
 	
 	@Autowired
 	private ParkMapDao parkMapDao;
+	
+	@Autowired
+	private UserPoiDao userPoiDao;
 
 	@Autowired
 	private PushNotificationDao pushNotificationDao;
@@ -392,13 +394,15 @@ public class UserServiceImpl implements UserService {
 				if (user.containsKey("identity_card") && user.containsKey("username")) {
 					String idcard = user.get("identity_card").toString();
 					String username = user.get("username").toString();
-					
+					String pay_time = user.getString("pay_time");
 					if(!Strings.isNullOrEmpty(idcard) && !Strings.isNullOrEmpty(username)){
 						User u = userDao.getUserByIdcard(idcard);
 						if(u != null){
 							Random random = new Random();
 							String randStr = String.valueOf(100000 + random.nextInt(899999));
 							u.setTmp_pass(randStr);
+							Date date = new Date(Long.parseLong(pay_time) * 1000);
+							u.setPay_time(date);
 							userDao.update(u);
 							JSONObject json = new JSONObject();
 							json.put("userid", u.getId());
@@ -406,7 +410,7 @@ public class UserServiceImpl implements UserService {
 							String raw = u.getId() + u.getPassword() + u.getCreated_time();
 							String token = EncryptionUtil.hashMessage(raw);
 							json.put("access_token", token);
-							json.put("token_timestamp", u.getCreated_time());
+							json.put("token_timestamp", u.getPay_time());
 							json.put("level", u.getLevel());
 							if(!Strings.isNullOrEmpty(u.getClub_name())){
 								json.put("club_name", u.getClub_name());
@@ -444,6 +448,8 @@ public class UserServiceImpl implements UserService {
 									u.setIdentity_card(idcard);
 //									u.setTrade(user.getString("trade"));
 									u.setCreated_time(new Date());
+									Date date = new Date(Long.parseLong(pay_time) * 1000);
+									u.setPay_time(date);
 									u.setLevel("normal");
 									u.setStatus("enable");
 									u.setResource("fblife");
@@ -4717,6 +4723,7 @@ public class UserServiceImpl implements UserService {
 			String identity_card = user.getString("identity_card");
 			String username = user.getString("username");
 			String password = user.getString("password");
+			String poiId = user.getString("poi_id");
 			User u = userDao.getUserByIdcard(identity_card);
 			if(u != null){
 				JSONObject resp = new JSONObject();
@@ -4725,7 +4732,15 @@ public class UserServiceImpl implements UserService {
 				resp.put("type", 1);
 				returnJson = CodeUtil.returnData(1000, "用户已存在", resp);
 				log.info("如愿成功*************");
-				elkRecordUser(u);
+				Poi poi = null;
+				if(!Strings.isNullOrEmpty(poiId)){
+					poi = poiDao.get(Long.parseLong(poiId));
+					UserPoi up = new UserPoi();
+					up.setPoi_id(Long.parseLong(poiId));
+					up.setUser_id(u.getId());
+					userPoiDao.save(up);
+				}
+				elkRecordUser(u,poi);
 				log.info("如愿成功*************");
 			}else{
 				String userInfo = getUserInfoByIdCard(identity_card.trim(),username.trim());
@@ -4762,7 +4777,15 @@ public class UserServiceImpl implements UserService {
 					returnJson = CodeUtil.returnData(1000, "录入成功", resp);
 					elkUser(uInfo);
 					log.info("如愿成功*************");
-					elkRecordUser(uInfo);
+					Poi poi = null;
+					if(!Strings.isNullOrEmpty(poiId)){
+						poi = poiDao.get(Long.parseLong(poiId));
+						UserPoi up = new UserPoi();
+						up.setPoi_id(Long.parseLong(poiId));
+						up.setUser_id(uInfo.getId());
+						userPoiDao.save(up);
+					}
+					elkRecordUser(uInfo,poi);
 					log.info("如愿成功*************");
 				}else{
 					returnJson = CodeUtil.returnData(1002, "身份证无效", "");
@@ -5230,6 +5253,7 @@ public class UserServiceImpl implements UserService {
 	public JSONObject verification_user(HttpServletRequest request) throws Exception {
 		JSONObject returnJson = null;
 		String barcode = request.getParameter("barcode");
+		String poiId = request.getParameter("poi_id");
 		if(!Strings.isNullOrEmpty(barcode)){
 			String idcard = barcode.substring(6, barcode.length()-8);
 			String one = idcard.substring(0,2);
@@ -5280,8 +5304,16 @@ public class UserServiceImpl implements UserService {
 				uJson.put("level",user.getLevel());
 				uJson.put("tmp_pass",user.getTmp_pass());
 				returnJson = CodeUtil.returnData(1000, "查询成功", uJson);
+				Poi poi = null;
+				if(!Strings.isNullOrEmpty(poiId)){
+					poi = poiDao.get(Long.parseLong(poiId));
+					UserPoi up = new UserPoi();
+					up.setPoi_id(Long.parseLong(poiId));
+					up.setUser_id(user.getId());
+					userPoiDao.save(up);
+				}
 				log.info("如愿成功*************");
-				elkRecordUser(user);
+				elkRecordUser(user,poi);
 				log.info("如愿成功*************");
 			}else{
 				returnJson = CodeUtil.returnData(1015, "该用户不存在", "");
@@ -5446,7 +5478,13 @@ public class UserServiceImpl implements UserService {
 		}
 		uJson.put("province_name", province);
 		uJson.put("birthday", u.getBirthday());
-		uJson.put("register_date", u.getCreated_time());
+		try {
+			uJson.put("register_date", u.getPay_time());
+		} catch (Exception e) {
+			uJson.put("register_date", u.getCreated_time());
+		}
+		
+		
 		if(u.getLevel().equals("vip")){
 			uJson.put("is_VIP",true);
 		}else if(u.getLevel().equals("normal")){
@@ -5505,12 +5543,15 @@ public class UserServiceImpl implements UserService {
 		
 	}
 	
-	public void elkRecordUser(User u){
+	public void elkRecordUser(User u,Poi poi){
 		JSONObject sendELK = new JSONObject();
 		sendELK.put("user_id", u.getId());
 		sendELK.put("user_name", u.getUsername());
 		sendELK.put("gender", u.getGender());
 		sendELK.put("phone", u.getPhone());
+		sendELK.put("ID_card", u.getIdentity_card());
+		sendELK.put("poi_id", poi.getId());
+		sendELK.put("poi_name", poi.getTitle());
 		sendELK.put("ID_card", u.getIdentity_card());
 		sendELK.put("comming_date", ((new Date()).getTime() / 1000));
 		try {
@@ -5522,6 +5563,8 @@ public class UserServiceImpl implements UserService {
 		} catch (Exception e) {
 		}
 	}
+	
+	
 	
 	public void elkCheckTicket(OrdersTicket ot){
 		JSONObject uJson = new JSONObject();
@@ -5659,6 +5702,4 @@ public class UserServiceImpl implements UserService {
 		return "success";
 	}
 	
-	
-
 }

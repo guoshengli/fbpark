@@ -61,6 +61,9 @@ import org.hibernate.annotations.GenerationTime;
    @Generated(GenerationTime.ALWAYS)
    @Column(name="create_time", insertable=false, updatable=false)
    private Date created_time;
+   
+   @Column(name="pay_time")
+   private Date pay_time;
  
    @Column(name="status")
    private String status;
@@ -269,6 +272,14 @@ import org.hibernate.annotations.GenerationTime;
 
 	public void setTmp_pass(String tmp_pass) {
 		this.tmp_pass = tmp_pass;
+	}
+
+	public long getPay_time() {
+		return pay_time.getTime() / 1000;
+	}
+
+	public void setPay_time(Date pay_time) {
+		this.pay_time = pay_time;
 	}
 
 	
